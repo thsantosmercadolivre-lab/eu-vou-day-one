@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eu vou · Day One Experience</title>
+<meta name="description" content="Gere seu card Eu Vou para o Day One Experience, 07.11 em Alphaville.">
+<meta property="og:title" content="Eu vou · Day One Experience">
+<meta property="og:description" content="Suba sua foto e gere seu card para os Stories.">
+<meta name="theme-color" content="#0A0A0A">
+<link rel="icon" href="d1-simbolo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --preto: #0A0A0A;
+    --ouro: #D9A633;
+    --ouro-claro: #E8C77A;
+    --creme: #F7EFD4;
+    --cinza: #8A8478;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--preto);
+    color: var(--creme);
+    font-family: 'Montserrat', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 48px;
+  }
+  header { text-align: center; margin-bottom: 22px; }
+  header img { height: 56px; margin-bottom: 12px; }
+  h1 {
+    font-weight: 900;
+    font-size: 26px;
+    letter-spacing: .06em;
+    color: var(--ouro);
+  }
+  header p { font-size: 14px; color: var(--cinza); margin-top: 6px; }
+
+  .palco {
+    width: 100%;
+    max-width: 360px;
+    aspect-ratio: 9 / 16;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid #2a251a;
+    position: relative;
+    touch-action: none;
+    cursor: grab;
+  }
+  .palco.arrastando { cursor: grabbing; }
+  canvas { width: 100%; height: 100%; display: block; }
+
+  .controles { width: 100%; max-width: 360px; margin-top: 18px; display: grid; gap: 12px; }
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    border-radius: 12px;
+    border: 0;
+    font: 700 16px 'Montserrat', sans-serif;
+    letter-spacing: .04em;
+    cursor: pointer;
+    text-align: center;
+  }
+  .btn-ouro { background: var(--ouro); color: var(--preto); }
+  .btn-ouro:active { background: var(--ouro-claro); }
+  .btn-linha { background: transparent; color: var(--creme); border: 1px solid #3a3426; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  input[type=file] { display: none; }
+  input[type=text] {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid #3a3426;
+    background: #141210;
+    color: var(--creme);
+    font: 500 15px 'Montserrat', sans-serif;
+  }
+  input[type=text]::placeholder { color: #6b655a; }
+  .zoom { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--cinza); }
+  .zoom input { flex: 1; accent-color: var(--ouro); }
+  .dica { font-size: 12px; color: var(--cinza); text-align: center; }
+  .oculto { display: none !important; }
+  footer { margin-top: 28px; font-size: 12px; color: #5a554b; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <img src="d1-simbolo.png" alt="Day One">
+    <h1>EU VOU</h1>
+    <p>Suba sua foto e gere seu card pros Stories</p>
+  </header>
+
+  <div class="palco" id="palco">
+    <canvas id="card" width="1080" height="1920"></canvas>
+  </div>
+
+  <div class="controles">
+    <label class="btn btn-ouro" for="foto" id="btnFoto">Escolher minha foto</label>
+    <input type="file" id="foto" accept="image/*">
+
+    <div class="zoom oculto" id="zoomBox">
+      <span>Zoom</span>
+      <input type="range" id="zoom" min="1" max="3" step="0.01" value="1">
+    </div>
+    <p class="dica oculto" id="dica">Arraste a foto pra ajustar o enquadramento</p>
+
+    <input type="text" id="nome" maxlength="28" placeholder="Seu nome (opcional)">
+
+    <button class="btn btn-ouro" id="gerar" disabled>Gerar meu card</button>
+    <button class="btn btn-linha oculto" id="trocar">Trocar foto</button>
+  </div>
+
+  <footer>DAY ONE EXPERIENCE · 07.11 · ALPHAVILLE</footer>
+
+<script>
+const W = 1080, H = 1920;
+const OURO = '#D9A633', OURO_CLARO = '#E8C77A', CREME = '#F7EFD4';
+const FOTO = { x: 110, y: 470, w: 860, h: 960, r: 44 };
+
+const canvas = document.getElementById('card');
+const ctx = canvas.getContext('2d');
+const palco = document.getElementById('palco');
+const inputFoto = document.getElementById('foto');
+const zoom = document.getElementById('zoom');
+const nome = document.getElementById('nome');
+const btnGerar = document.getElementById('gerar');
+
+const simbolo = new Image();
+simbolo.src = 'd1-simbolo.png';
+
+let foto = null;
+let escala = 1, offX = 0, offY = 0;
+
+function espacado(texto, x, y, espaco) {
+  // canvas não tem letter-spacing confiável em todo navegador, então desenha letra por letra
+  const larguras = [...texto].map(c => ctx.measureText(c).width);
+  const total = larguras.reduce((a, b) => a + b, 0) + espaco * (texto.length - 1);
+  let cx = x - total / 2;
+  ctx.textAlign = 'left';
+  [...texto].forEach((c, i) => { ctx.fillText(c, cx, y); cx += larguras[i] + espaco; });
+}
+
+function retanguloRedondo(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function desenhar() {
+  ctx.fillStyle = '#0A0A0A';
+  ctx.fillRect(0, 0, W, H);
+
+  const brilho = ctx.createRadialGradient(W / 2, 900, 50, W / 2, 900, 900);
+  brilho.addColorStop(0, 'rgba(217,166,51,0.16)');
+  brilho.addColorStop(1, 'rgba(217,166,51,0)');
+  ctx.fillStyle = brilho;
+  ctx.fillRect(0, 0, W, H);
+
+  // topo: símbolo + nome do evento
+  if (simbolo.complete && simbolo.naturalWidth) {
+    const sh = 120, sw = sh * simbolo.naturalWidth / simbolo.naturalHeight;
+    ctx.drawImage(simbolo, (W - sw) / 2, 110, sw, sh);
+  }
+  ctx.fillStyle = OURO;
+  ctx.font = '900 64px Montserrat';
+  ctx.textBaseline = 'alphabetic';
+  espacado('DAY ONE', W / 2, 330, 10);
+  ctx.fillStyle = OURO_CLARO;
+  ctx.font = '500 30px Montserrat';
+  espacado('EXPERIENCE', W / 2, 390, 22);
+
+  // foto
+  ctx.save();
+  retanguloRedondo(FOTO.x, FOTO.y, FOTO.w, FOTO.h, FOTO.r);
+  ctx.clip();
+  if (foto) {
+    const base = Math.max(FOTO.w / foto.width, FOTO.h / foto.height) * escala;
+    const fw = foto.width * base, fh = foto.height * base;
+    limitarOffset(fw, fh);
+    ctx.drawImage(foto, FOTO.x + (FOTO.w - fw) / 2 + offX, FOTO.y + (FOTO.h - fh) / 2 + offY, fw, fh);
+  } else {
+    ctx.fillStyle = '#16130d';
+    ctx.fillRect(FOTO.x, FOTO.y, FOTO.w, FOTO.h);
+    ctx.fillStyle = '#6b6352';
+    ctx.font = '500 34px Montserrat';
+    ctx.textAlign = 'center';
+    ctx.fillText('SUA FOTO AQUI', W / 2, FOTO.y + FOTO.h / 2);
+  }
+  const sombra = ctx.createLinearGradient(0, FOTO.y + FOTO.h - 380, 0, FOTO.y + FOTO.h);
+  sombra.addColorStop(0, 'rgba(10,10,10,0)');
+  sombra.addColorStop(1, 'rgba(10,10,10,0.92)');
+  ctx.fillStyle = sombra;
+  ctx.fillRect(FOTO.x, FOTO.y + FOTO.h - 380, FOTO.w, 380);
+  ctx.restore();
+
+  ctx.strokeStyle = OURO;
+  ctx.lineWidth = 6;
+  retanguloRedondo(FOTO.x, FOTO.y, FOTO.w, FOTO.h, FOTO.r);
+  ctx.stroke();
+
+  // EU VOU sobre a base da foto
+  const grad = ctx.createLinearGradient(0, 1330, 0, 1560);
+  grad.addColorStop(0, '#F2D58A');
+  grad.addColorStop(1, OURO);
+  ctx.fillStyle = grad;
+  ctx.font = '900 250px Montserrat';
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 30;
+  espacado('EU VOU', W / 2, 1530, 6);
+  ctx.shadowBlur = 0;
+
+  const n = nome.value.trim().toUpperCase();
+  if (n) {
+    ctx.fillStyle = CREME;
+    ctx.font = '700 44px Montserrat';
+    espacado(n, W / 2, 1620, 6);
+  }
+
+  ctx.strokeStyle = OURO;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(240, 1690);
+  ctx.lineTo(W - 240, 1690);
+  ctx.stroke();
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '700 50px Montserrat';
+  espacado('07.11  ·  ALPHAVILLE', W / 2, 1775, 12);
+}
+
+function limitarOffset(fw, fh) {
+  const mx = Math.max(0, (fw - FOTO.w) / 2), my = Math.max(0, (fh - FOTO.h) / 2);
+  offX = Math.min(mx, Math.max(-mx, offX));
+  offY = Math.min(my, Math.max(-my, offY));
+}
+
+inputFoto.addEventListener('change', e => {
+  const arq = e.target.files[0];
+  if (!arq) return;
+  const img = new Image();
+  img.onload = () => {
+    foto = img;
+    escala = 1; offX = 0; offY = 0; zoom.value = 1;
+    document.getElementById('btnFoto').classList.add('oculto');
+    document.getElementById('zoomBox').classList.remove('oculto');
+    document.getElementById('dica').classList.remove('oculto');
+    document.getElementById('trocar').classList.remove('oculto');
+    btnGerar.disabled = false;
+    desenhar();
+  };
+  img.src = URL.createObjectURL(arq);
+});
+
+document.getElementById('trocar').addEventListener('click', () => inputFoto.click());
+zoom.addEventListener('input', () => { escala = +zoom.value; desenhar(); });
+nome.addEventListener('input', desenhar);
+
+// arrastar a foto (mouse e toque)
+let arrastando = false, ultX = 0, ultY = 0;
+palco.addEventListener('pointerdown', e => {
+  if (!foto) { inputFoto.click(); return; }
+  arrastando = true; ultX = e.clientX; ultY = e.clientY;
+  palco.classList.add('arrastando');
+  palco.setPointerCapture(e.pointerId);
+});
+palco.addEventListener('pointermove', e => {
+  if (!arrastando) return;
+  const k = W / palco.clientWidth;
+  offX += (e.clientX - ultX) * k;
+  offY += (e.clientY - ultY) * k;
+  ultX = e.clientX; ultY = e.clientY;
+  desenhar();
+});
+['pointerup', 'pointercancel'].forEach(ev => palco.addEventListener(ev, () => {
+  arrastando = false; palco.classList.remove('arrastando');
+}));
+
+btnGerar.addEventListener('click', () => {
+  desenhar();
+  canvas.toBlob(async blob => {
+    const arquivo = new File([blob], 'eu-vou-day-one-experience.png', { type: 'image/png' });
+    // no celular abre a folha de compartilhar (dá pra mandar direto pros Stories); no PC baixa
+    if (navigator.canShare && navigator.canShare({ files: [arquivo] }) && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      try { await navigator.share({ files: [arquivo], title: 'Eu vou · Day One Experience' }); return; }
+      catch (err) { if (err.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = arquivo.name;
+    a.click();
+  }, 'image/png');
+});
+
+Promise.all([
+  document.fonts.load('900 64px Montserrat'),
+  document.fonts.load('700 50px Montserrat'),
+  document.fonts.load('500 30px Montserrat'),
+  new Promise(r => { if (simbolo.complete) r(); else simbolo.onload = simbolo.onerror = r; })
+]).then(desenhar);
+desenhar();
+</script>
+</body>
+</html>
