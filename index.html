@@ -42,8 +42,7 @@
   header p { font-size: 14px; color: var(--cinza); margin-top: 6px; }
 
   .palco {
-    width: 100%;
-    max-width: 360px;
+    width: min(100%, 360px, calc(62vh * 9 / 16));
     aspect-ratio: 9 / 16;
     border-radius: 18px;
     overflow: hidden;
@@ -56,6 +55,8 @@
   canvas { width: 100%; height: 100%; display: block; }
 
   .controles { width: 100%; max-width: 360px; margin-top: 18px; display: grid; gap: 12px; }
+  .subir { width: 100%; max-width: 360px; margin-bottom: 18px; }
+  .subir .btn { font-size: 17px; padding: 18px; }
   .btn {
     display: block;
     width: 100%;
@@ -96,14 +97,16 @@
     <p>Suba sua foto e gere seu card pros Stories</p>
   </header>
 
+  <div class="subir" id="subirBox">
+    <label class="btn btn-ouro" for="foto">📷 Subir minha foto</label>
+  </div>
+  <input type="file" id="foto" accept="image/*">
+
   <div class="palco" id="palco">
     <canvas id="card" width="1080" height="1920"></canvas>
   </div>
 
   <div class="controles">
-    <label class="btn btn-ouro" for="foto" id="btnFoto">Escolher minha foto</label>
-    <input type="file" id="foto" accept="image/*">
-
     <div class="zoom oculto" id="zoomBox">
       <span>Zoom</span>
       <input type="range" id="zoom" min="1" max="3" step="0.01" value="1">
@@ -112,7 +115,8 @@
 
     <input type="text" id="nome" maxlength="28" placeholder="Seu nome (opcional)">
 
-    <button class="btn btn-ouro" id="gerar" disabled>Gerar meu card</button>
+    <button class="btn btn-ouro oculto" id="compartilhar">Compartilhar nos Stories</button>
+    <button class="btn btn-ouro oculto" id="salvar">Salvar imagem</button>
     <button class="btn btn-linha oculto" id="trocar">Trocar foto</button>
   </div>
 
@@ -129,7 +133,12 @@ const palco = document.getElementById('palco');
 const inputFoto = document.getElementById('foto');
 const zoom = document.getElementById('zoom');
 const nome = document.getElementById('nome');
-const btnGerar = document.getElementById('gerar');
+const btnCompartilhar = document.getElementById('compartilhar');
+const btnSalvar = document.getElementById('salvar');
+const NOME_ARQUIVO = 'eu-vou-day-one-experience.png';
+const podeCompartilhar = !!(navigator.canShare && navigator.canShare({
+  files: [new File([new Blob()], NOME_ARQUIVO, { type: 'image/png' })]
+}));
 
 const simbolo = new Image();
 simbolo.src = 'd1-simbolo.png';
@@ -251,11 +260,12 @@ inputFoto.addEventListener('change', e => {
   img.onload = () => {
     foto = img;
     escala = 1; offX = 0; offY = 0; zoom.value = 1;
-    document.getElementById('btnFoto').classList.add('oculto');
+    document.getElementById('subirBox').classList.add('oculto');
     document.getElementById('zoomBox').classList.remove('oculto');
     document.getElementById('dica').classList.remove('oculto');
     document.getElementById('trocar').classList.remove('oculto');
-    btnGerar.disabled = false;
+    btnSalvar.classList.remove('oculto');
+    if (podeCompartilhar) btnCompartilhar.classList.remove('oculto');
     desenhar();
   };
   img.src = URL.createObjectURL(arq);
@@ -285,21 +295,27 @@ palco.addEventListener('pointermove', e => {
   arrastando = false; palco.classList.remove('arrastando');
 }));
 
-btnGerar.addEventListener('click', () => {
+function gerarPng() {
   desenhar();
-  canvas.toBlob(async blob => {
-    const arquivo = new File([blob], 'eu-vou-day-one-experience.png', { type: 'image/png' });
-    // no celular abre a folha de compartilhar (dá pra mandar direto pros Stories); no PC baixa
-    if (navigator.canShare && navigator.canShare({ files: [arquivo] }) && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      try { await navigator.share({ files: [arquivo], title: 'Eu vou · Day One Experience' }); return; }
-      catch (err) { if (err.name === 'AbortError') return; }
-    }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = arquivo.name;
-    a.click();
-  }, 'image/png');
+  return new Promise(r => canvas.toBlob(r, 'image/png'));
+}
+
+function baixar(blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = NOME_ARQUIVO;
+  a.click();
+}
+
+// abre a folha de compartilhar do celular, onde aparece o Instagram (Stories)
+btnCompartilhar.addEventListener('click', async () => {
+  const blob = await gerarPng();
+  const arquivo = new File([blob], NOME_ARQUIVO, { type: 'image/png' });
+  try { await navigator.share({ files: [arquivo], title: 'Eu vou · Day One Experience' }); }
+  catch (err) { if (err.name !== 'AbortError') baixar(blob); }
 });
+
+btnSalvar.addEventListener('click', async () => baixar(await gerarPng()));
 
 Promise.all([
   document.fonts.load('900 64px Montserrat'),
